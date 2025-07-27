@@ -1,10 +1,65 @@
+using FlightBoard.Application;
+using FlightBoard.Application.Services;
+using FlightBoard.Domain.Interfaces;
+using FlightBoard.Infrastructure.Data;
+using FlightBoard.Infrastructure.Repositories;
+using Microsoft.EntityFrameworkCore;
+using FlightBoard.API.Hubs;
+using FlightBoard.API.SignalR;
+using FlightBoard.Application.Events;
+using Microsoft.AspNetCore.Diagnostics;
+
+
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddControllers();
+builder.Services.AddDbContext<FlightDbContext>(options =>
+    options.UseSqlite("Data Source=flights.db"));
+
+builder.Services.AddScoped<IFlightRepository, FlightRepository>();
+builder.Services.AddScoped<FlightService>();
+
+builder.Services.AddSignalR();
+builder.Services.AddScoped<IFlightEventPublisher, FlightEventPublisher>();
+
+builder.Services.AddAutoMapper(typeof(MappingProfile));
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigin",
+        builder =>
+        {
+            builder.WithOrigins("http://localhost:3000")
+                   .AllowAnyHeader()
+                   .AllowAnyMethod();
+        });
+});
+
 
 var app = builder.Build();
+
+app.UseExceptionHandler(appBuilder =>
+{
+    appBuilder.Run(async context =>
+    {
+        context.Response.ContentType = "application/json";
+
+        var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+        if (exception is ArgumentException)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsync($"Bad Request: {exception.Message}");
+        }
+        else
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsync("An unexpected error occurred.");
+        }
+    });
+});
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -14,28 +69,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+app.UseCors("AllowSpecificOrigin");
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+app.MapControllers();
+
+app.MapHub<FlightHub>("/flightHub");
+
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
