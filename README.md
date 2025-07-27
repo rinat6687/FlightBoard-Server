@@ -57,12 +57,6 @@ dotnet run
 
 ---
 
-## 🎥 Screen recording (optional)
-
-*You can add a demo video of the app in action here (using [Loom](https://www.loom.com/), a link to YouTube or upload to my repository).*
-
----
-
 ## ✨ Project creator
 
 **Rinat skinny**
